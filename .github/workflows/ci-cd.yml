@@ -199,10 +199,10 @@ jobs:
           echo "🏗️ Creating ECS cluster '$ECS_CLUSTER'..."
           aws ecs create-cluster --cluster-name $ECS_CLUSTER --region $AWS_REGION
           
-          # Wait for cluster to be active
-          echo "⏳ Waiting for cluster to be active..."
-          aws ecs wait cluster-active --clusters $ECS_CLUSTER --region $AWS_REGION
-          echo "✅ ECS cluster '$ECS_CLUSTER' is now active"
+          # Give cluster a moment to be ready
+          echo "⏳ Waiting a moment for cluster to be ready..."
+          sleep 5
+          echo "✅ ECS cluster '$ECS_CLUSTER' created"
         fi
         
         # Verify cluster exists
