@@ -37,4 +37,4 @@ docker run cicd-demo
 
 **Deploy**: Push to main branch to trigger pipeline
 
-See `GITHUB-IAM-ROLE-SETUP.md` and `CI-CD-DOCUMENTATION.md` for detailed setup. 
+See `GITHUB-IAM-ROLE-SETUP.md` and `CI-CD-DOCUMENTATION.md` for detailed setup.# Pipeline Trigger Test
