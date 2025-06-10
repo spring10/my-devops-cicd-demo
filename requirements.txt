@@ -1,0 +1,13 @@
+# Python Requirements
+# This file lists the Python dependencies for the hello_world.py application
+
+# No external dependencies required for this simple application
+# All functionality uses Python standard library
+
+# Future dependencies can be added here in the format:
+# package_name==version_number
+
+# Example dependencies that might be added later:
+# requests==2.31.0
+# flask==2.3.3
+# pytest==7.4.2 
