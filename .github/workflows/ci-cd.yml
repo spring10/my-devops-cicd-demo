@@ -190,21 +190,73 @@ jobs:
         
     - name: Create ECS cluster if it doesn't exist
       run: |
+        echo "🏗️ Creating ECS cluster..."
         aws ecs describe-clusters --clusters $ECS_CLUSTER --region $AWS_REGION || \
         aws ecs create-cluster --cluster-name $ECS_CLUSTER --region $AWS_REGION
+        echo "✅ ECS cluster ready"
         
     - name: Create CloudWatch log group if it doesn't exist
       run: |
+        echo "📊 Setting up CloudWatch logs..."
         aws logs describe-log-groups --log-group-name-prefix "/ecs/cicd-demo" --region $AWS_REGION || \
         aws logs create-log-group --log-group-name "/ecs/cicd-demo" --region $AWS_REGION
+        echo "✅ CloudWatch log group ready"
         
-    - name: Deploy to Amazon ECS
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-      with:
-        task-definition: ${{ steps.task-def.outputs.task-definition-file }}
-        service: ${{ env.ECS_SERVICE }}
-        cluster: ${{ env.ECS_CLUSTER }}
-        wait-for-service-stability: true
+    - name: Register ECS task definition
+      run: |
+        echo "📋 Registering task definition..."
+        aws ecs register-task-definition \
+          --cli-input-json file://task-definition.json \
+          --region $AWS_REGION
+        echo "✅ Task definition registered"
+        
+    - name: Get default VPC info
+      id: vpc-info
+      run: |
+        echo "🔍 Getting VPC information..."
+        # Get default VPC
+        VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query 'Vpcs[0].VpcId' --output text --region $AWS_REGION)
+        echo "VPC ID: $VPC_ID"
+        
+        # Get default subnets
+        SUBNETS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[].SubnetId' --output text --region $AWS_REGION | tr '\t' ',')
+        echo "Subnets: $SUBNETS"
+        
+        # Get default security group
+        SG_ID=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$VPC_ID" "Name=group-name,Values=default" --query 'SecurityGroups[0].GroupId' --output text --region $AWS_REGION)
+        echo "Security Group: $SG_ID"
+        
+        echo "subnets=$SUBNETS" >> $GITHUB_OUTPUT
+        echo "security-group=$SG_ID" >> $GITHUB_OUTPUT
+        
+    - name: Create or update ECS service
+      run: |
+        SUBNETS="${{ steps.vpc-info.outputs.subnets }}"
+        SECURITY_GROUP="${{ steps.vpc-info.outputs.security-group }}"
+        
+        echo "🚀 Deploying to ECS..."
+        
+        # Check if service exists
+        if aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_REGION --query 'services[0].serviceName' --output text 2>/dev/null | grep -q $ECS_SERVICE; then
+          echo "Service exists, updating..."
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --task-definition $ECS_TASK_DEFINITION \
+            --region $AWS_REGION
+        else
+          echo "Service doesn't exist, creating..."
+          aws ecs create-service \
+            --cluster $ECS_CLUSTER \
+            --service-name $ECS_SERVICE \
+            --task-definition $ECS_TASK_DEFINITION \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SECURITY_GROUP],assignPublicIp=ENABLED}" \
+            --region $AWS_REGION
+        fi
+        
+        echo "✅ ECS deployment completed"
         
     - name: Deployment Summary
       run: |
