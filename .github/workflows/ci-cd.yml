@@ -190,10 +190,24 @@ jobs:
         
     - name: Create ECS cluster if it doesn't exist
       run: |
-        echo "🏗️ Creating ECS cluster..."
-        aws ecs describe-clusters --clusters $ECS_CLUSTER --region $AWS_REGION || \
-        aws ecs create-cluster --cluster-name $ECS_CLUSTER --region $AWS_REGION
-        echo "✅ ECS cluster ready"
+        echo "🏗️ Checking if ECS cluster exists..."
+        
+        # Check if cluster exists
+        if aws ecs describe-clusters --clusters $ECS_CLUSTER --region $AWS_REGION --query 'clusters[0].clusterName' --output text 2>/dev/null | grep -q $ECS_CLUSTER; then
+          echo "✅ ECS cluster '$ECS_CLUSTER' already exists"
+        else
+          echo "🏗️ Creating ECS cluster '$ECS_CLUSTER'..."
+          aws ecs create-cluster --cluster-name $ECS_CLUSTER --region $AWS_REGION
+          
+          # Wait for cluster to be active
+          echo "⏳ Waiting for cluster to be active..."
+          aws ecs wait cluster-active --clusters $ECS_CLUSTER --region $AWS_REGION
+          echo "✅ ECS cluster '$ECS_CLUSTER' is now active"
+        fi
+        
+        # Verify cluster exists
+        CLUSTER_STATUS=$(aws ecs describe-clusters --clusters $ECS_CLUSTER --region $AWS_REGION --query 'clusters[0].status' --output text)
+        echo "Cluster status: $CLUSTER_STATUS"
         
     - name: Create CloudWatch log group if it doesn't exist
       run: |
@@ -235,17 +249,25 @@ jobs:
         SECURITY_GROUP="${{ steps.vpc-info.outputs.security-group }}"
         
         echo "🚀 Deploying to ECS..."
+        echo "Cluster: $ECS_CLUSTER"
+        echo "Service: $ECS_SERVICE"
+        echo "Subnets: $SUBNETS"
+        echo "Security Group: $SECURITY_GROUP"
+        
+        # Double-check cluster exists before creating service
+        echo "🔍 Verifying cluster exists..."
+        aws ecs describe-clusters --clusters $ECS_CLUSTER --region $AWS_REGION --query 'clusters[0].{Name:clusterName,Status:status}'
         
         # Check if service exists
         if aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_REGION --query 'services[0].serviceName' --output text 2>/dev/null | grep -q $ECS_SERVICE; then
-          echo "Service exists, updating..."
+          echo "📝 Service exists, updating..."
           aws ecs update-service \
             --cluster $ECS_CLUSTER \
             --service $ECS_SERVICE \
             --task-definition $ECS_TASK_DEFINITION \
             --region $AWS_REGION
         else
-          echo "Service doesn't exist, creating..."
+          echo "🆕 Service doesn't exist, creating..."
           aws ecs create-service \
             --cluster $ECS_CLUSTER \
             --service-name $ECS_SERVICE \
